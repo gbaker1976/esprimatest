@@ -2,7 +2,6 @@
 
 var parser = require('esprima');
 var formatter = require('escodegen');
-var traverser = require('estraverse');
 var data = [];
 var options = {
         format: {
@@ -38,6 +37,53 @@ var options = {
         verbatim: undefined
     };
 
+var recurseOptions = {
+	VariableDeclaration: function(){
+      // if ( this.declarations ) {
+      // 	this.declarations = this.declarations.map(function( node ){
+      //     	if ( 'VariableDeclarator' === node.type ) {
+      //             node.id.name = "foogle";
+      //             node.init.value = "boogle";
+      //       }
+      //       return node;
+      //   });
+      // }
+      return this;
+    }
+};
+
+function write( msg ){
+	process.stdout.write( msg );
+}
+
+function recurse( subtree, options ){
+  var node;
+  var i;
+
+  options = options || {};
+
+  function processNode( node, opts ){
+      if ( !node.type ) return node;
+      return (function(n){ return n }).call( node );
+  }
+
+  if ( subtree instanceof Array ) {
+    for( i = 0; i < subtree.length; i++ ) {
+      node = subtree[ i ];
+      subtree[ i ] = recurse( node, options );
+    }
+  } else if ( subtree instanceof Object ) {
+    for ( var p in subtree ) {
+        if ( subtree.hasOwnProperty( p ) ) {
+            node = processNode( subtree[ p ], options );
+            subtree[ p ] = recurse( node, options );
+        }
+    }
+  }
+
+  return subtree;
+}
+
 process.stdin.setEncoding('utf8');
 
 process.stdin.on('readable', function() {
@@ -52,24 +98,7 @@ process.stdin.on('readable', function() {
 process.stdin.on('end', function() {
   if ( !data.length ) process.exit();
 
-  var ast = parser.parse( data.join('') );
-
-  traverser.replace( ast, {
-    leave: function (node, parent) {
-        if (node.type == 'VariableDeclaration') {
-          if ( node.declarations.length > 1 ) {
-            node.declarations.forEach(function( childNode, i ){
-              parent.body.unshift({
-                type: node.type,
-                declarations: [ childNode ],
-                kind: node.kind
-              });
-            });
-            this.remove();
-          }
-        }
-    }
-  });
-
-  process.stdout.write( formatter.generate( ast, options ) );
+  var ast = recurse( parser.parse( data.join('') ), recurseOptions );
+write(JSON.stringify(ast));
+  //write( formatter.generate( ast, options ) );
 });
